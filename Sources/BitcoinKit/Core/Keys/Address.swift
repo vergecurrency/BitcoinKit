@@ -262,11 +262,14 @@ public struct StealthAddress: Address {
         let type: AddressType
         let addressPrefix = stealthHash[0]
         switch addressPrefix {
-        case Network.mainnetXVG.stealthVersion:
-            network = .mainnetXVG
+        case Network.mainnet.stealthVersion:
+            network = .mainnet
             type = .stealthHash
         case Network.testnet.stealthVersion:
             network = .testnet
+            type = .stealthHash
+        case Network.mainnetXVG.stealthVersion:
+            network = .mainnetXVG
             type = .stealthHash
         default:
             throw AddressError.invalidVersionByte

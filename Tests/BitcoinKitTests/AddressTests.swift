@@ -139,11 +139,11 @@ class AddressTests: XCTestCase {
         )
         XCTAssertEqual("\(stealthAddress)", "vJmvrmc3wGrdoiGsT7HnbbdhSkL9Bb5TmrPZsGWz7nsJx4iC5c1E21Rypy14pEXFk273qg7WMwDvDnyrPzFyP7YVwzz89e7bdpJmte")
 
-        let addressFromStealthAddress = try! StealthAddress(
+        let addressFromStealthAddress = try? StealthAddress(
             "vJmvrmc3wGrdoiGsT7HnbbdhSkL9Bb5TmrPZsGWz7nsJx4iC5c1E21Rypy14pEXFk273qg7WMwDvDnyrPzFyP7YVwzz89e7bdpJmte"
         )
         XCTAssertNotNil(addressFromStealthAddress)
-        XCTAssertEqual("\(addressFromStealthAddress)", "vJmvrmc3wGrdoiGsT7HnbbdhSkL9Bb5TmrPZsGWz7nsJx4iC5c1E21Rypy14pEXFk273qg7WMwDvDnyrPzFyP7YVwzz89e7bdpJmte")
+        XCTAssertEqual("\(addressFromStealthAddress!)", "vJmvrmc3wGrdoiGsT7HnbbdhSkL9Bb5TmrPZsGWz7nsJx4iC5c1E21Rypy14pEXFk273qg7WMwDvDnyrPzFyP7YVwzz89e7bdpJmte")
     }
     
     func testMainnetXVGStealthAddress() {
@@ -190,10 +190,10 @@ class AddressTests: XCTestCase {
         )
         XCTAssertEqual("\(stealthAddress)", "smYnkGT73m5t9KhgSSJoR5JPSB8KfZS5mV1pzHo3M8tCAqoP2bv8V55mDnmHxbxu921cJMo4zPAJnHtYQvuQysLUgkqGX9y5mE7Y7Y")
         
-        let addressFromStealthAddress = try! StealthAddress(
+        let addressFromStealthAddress = try? StealthAddress(
             "smYnkGT73m5t9KhgSSJoR5JPSB8KfZS5mV1pzHo3M8tCAqoP2bv8V55mDnmHxbxu921cJMo4zPAJnHtYQvuQysLUgkqGX9y5mE7Y7Y"
         )
         XCTAssertNotNil(addressFromStealthAddress)
-        XCTAssertEqual("\(addressFromStealthAddress)", "smYnkGT73m5t9KhgSSJoR5JPSB8KfZS5mV1pzHo3M8tCAqoP2bv8V55mDnmHxbxu921cJMo4zPAJnHtYQvuQysLUgkqGX9y5mE7Y7Y")
+        XCTAssertEqual("\(addressFromStealthAddress!)", "smYnkGT73m5t9KhgSSJoR5JPSB8KfZS5mV1pzHo3M8tCAqoP2bv8V55mDnmHxbxu921cJMo4zPAJnHtYQvuQysLUgkqGX9y5mE7Y7Y")
     }
 }
