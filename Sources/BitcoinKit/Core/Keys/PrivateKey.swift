@@ -94,6 +94,8 @@ public struct PrivateKey {
             network = .mainnet
         case Network.testnet.privatekey:
             network = .testnet
+        case Network.mainnetXVG.privatekey:
+            network = .mainnetXVG
         default:
             throw PrivateKeyError.invalidFormat
         }

@@ -81,17 +81,23 @@ public struct LegacyAddress: Address {
         let type: AddressType
         let addressPrefix = pubKeyHash[0]
         switch addressPrefix {
-        case Network.mainnetXVG.pubkeyhash:
-            network = .mainnetXVG
+        case Network.mainnet.pubkeyhash:
+            network = .mainnet
             type = .pubkeyHash
         case Network.testnet.pubkeyhash:
             network = .testnet
             type = .pubkeyHash
-        case Network.mainnetXVG.scripthash:
-            network = .mainnetXVG
+        case Network.mainnet.scripthash:
+            network = .mainnet
             type = .scriptHash
         case Network.testnet.scripthash:
             network = .testnet
+            type = .scriptHash
+        case Network.mainnetXVG.pubkeyhash:
+            network = .mainnet
+            type = .pubkeyHash
+        case Network.mainnetXVG.scripthash:
+            network = .mainnet
             type = .scriptHash
         default:
             throw AddressError.invalidVersionByte
@@ -163,10 +169,12 @@ public struct Cashaddr: Address {
         self.publicKey = nil
 
         switch prefix {
-        case Network.mainnetXVG.scheme:
-            network = .mainnetXVG
+        case Network.mainnet.scheme:
+            network = .mainnet
         case Network.testnet.scheme:
             network = .testnet
+        case Network.mainnetXVG.scheme:
+            network = .mainnetXVG
         default:
             throw AddressError.invalidScheme
         }
