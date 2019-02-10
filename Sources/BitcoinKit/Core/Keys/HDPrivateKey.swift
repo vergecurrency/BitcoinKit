@@ -98,7 +98,27 @@ public class HDPrivateKey {
         guard let derivedKey = _HDKey(privateKey: raw, publicKey: extendedPublicKey().raw, chainCode: chainCode, depth: depth, fingerprint: fingerprint, childIndex: childIndex).derived(at: index, hardened: hardened) else {
             throw DerivationError.derivationFailed
         }
-        return HDPrivateKey(privateKey: derivedKey.privateKey!, chainCode: derivedKey.chainCode, network: network, depth: derivedKey.depth, fingerprint: derivedKey.fingerprint, childIndex: derivedKey.childIndex)
+        return HDPrivateKey(privateKey: ensure32Bytes(data: derivedKey.privateKey!), chainCode: derivedKey.chainCode, network: network, depth: derivedKey.depth, fingerprint: derivedKey.fingerprint, childIndex: derivedKey.childIndex)
+    }
+    
+    private func ensure32Bytes(data: Data) -> Data {
+        let length = data.count
+        
+        if length >= 32 {
+            return data
+        }
+        
+        var dataFixed = Data()
+        var int0 = UInt8(0)
+        let data_0: Data = Data(buffer: UnsafeBufferPointer(start: &int0, count: 1))
+        
+        for _ in 0..<32-length {
+            dataFixed.append(data_0)
+        }
+        
+        dataFixed.append(data)
+        
+        return dataFixed
     }
 }
 
