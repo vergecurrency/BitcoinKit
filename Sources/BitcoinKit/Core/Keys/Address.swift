@@ -221,3 +221,90 @@ extension Cashaddr: CustomStringConvertible {
         return cashaddr
     }
 }
+
+public struct StealthAddress: Address {
+
+    public var network: Network
+    public var type: AddressType
+    public var data: Data
+    public var publicKey: Data?
+    public var base58: String
+    public var cashaddr: String = ""
+
+    public typealias Base58Check = String
+
+    public let scanPublicKey: Data
+    public let spendPublicKey: Data
+
+    public init(scanPublicKey: PublicKey, spendPublicKey: PublicKey, network: Network) {
+        var addressData = Data()
+        // Version
+        addressData.append(network.stealthVersion)
+        // Options
+        addressData.append(0)
+        // Scan key
+        addressData.append(scanPublicKey.data)
+        // Number of scan keys
+        addressData.append(1)
+        // Spend key
+        addressData.append(spendPublicKey.data)
+        // Number of sign keys
+        addressData.append(1)
+        // Prefix length
+        addressData.append(0)
+
+        self.network = network
+        self.type = AddressType.stealthHash
+        self.data = addressData
+        self.base58 = publicKeyHashToAddress(addressData)
+
+        self.scanPublicKey = scanPublicKey.data
+        self.spendPublicKey = spendPublicKey.data
+    }
+
+    public init(_ base58: Base58Check) throws {
+        guard let raw = Base58.decode(base58) else {
+            throw AddressError.invalid
+        }
+
+        let checksum = raw.suffix(4)
+        let stealthHash = raw.dropLast(4)
+        let checksumConfirm = Crypto.sha256sha256(stealthHash).prefix(4)
+        guard checksum == checksumConfirm else {
+            throw AddressError.invalid
+        }
+
+        let network: Network
+        let type: AddressType
+        let addressPrefix = stealthHash[0]
+        switch addressPrefix {
+        case Network.mainnet.stealthVersion:
+            network = .mainnet
+            type = .stealthHash
+        case Network.testnet.stealthVersion:
+            network = .testnet
+            type = .stealthHash
+        case Network.mainnetXVG.stealthVersion:
+            network = .mainnetXVG
+            type = .stealthHash
+        default:
+            throw AddressError.invalidVersionByte
+        }
+
+        self.scanPublicKey = stealthHash.dropFirst(2).dropLast(36)
+        self.spendPublicKey = stealthHash.dropFirst(36).dropLast(2)
+
+        self.network = network
+        self.type = type
+        self.publicKey = nil
+        self.data = stealthHash
+        self.base58 = base58
+    }
+
+}
+
+extension StealthAddress: CustomStringConvertible {
+    public var description: String {
+        return base58
+    }
+}
