@@ -110,7 +110,7 @@ public class XVGMainnet: Network {
         return 0x28
     }
     public override var port: UInt32 {
-        return 21102
+        return 21_102
     }
     /// blockchain checkpoints - these are also used as starting points for partial chain downloads, so they need to be at
     /// difficulty transition boundaries in order to verify the block difficulty at the immediately following transition
