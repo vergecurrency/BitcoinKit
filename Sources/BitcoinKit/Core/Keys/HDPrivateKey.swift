@@ -100,24 +100,24 @@ public class HDPrivateKey {
         }
         return HDPrivateKey(privateKey: ensure32Bytes(data: derivedKey.privateKey!), chainCode: derivedKey.chainCode, network: network, depth: derivedKey.depth, fingerprint: derivedKey.fingerprint, childIndex: derivedKey.childIndex)
     }
-    
+
     private func ensure32Bytes(data: Data) -> Data {
         let length = data.count
-        
+
         if length >= 32 {
             return data
         }
-        
+
         var dataFixed = Data()
         var int0 = UInt8(0)
         let data_0: Data = Data(buffer: UnsafeBufferPointer(start: &int0, count: 1))
-        
-        for _ in 0..<32-length {
+
+        for _ in 0..<32 - length {
             dataFixed.append(data_0)
         }
-        
+
         dataFixed.append(data)
-        
+
         return dataFixed
     }
 }
