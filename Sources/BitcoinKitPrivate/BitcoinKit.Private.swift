@@ -7,34 +7,19 @@
 //
 
 import Foundation
-import COpenSSL
+import CryptoKit
 import secp256k1
 
 public class _Hash {
     public static func sha1(_ data: Data) -> Data {
-        var result = [UInt8](repeating: 0, count: Int(SHA_DIGEST_LENGTH))
-        data.withUnsafeBytes { (ptr: UnsafePointer<UInt8>) in
-            SHA1(ptr, data.count, &result)
-            return
-        }
-        return Data(result)
+        return Data(Insecure.SHA1.hash(data: data))
     }
     
     public static func sha256(_ data: Data) -> Data {
-        var result = [UInt8](repeating: 0, count: Int(SHA256_DIGEST_LENGTH))
-        data.withUnsafeBytes { (ptr: UnsafePointer<UInt8>) in
-            SHA256(ptr, data.count, &result)
-            return
-        }
-        return Data(result)
+        return Data(SHA256.hash(data: data))
     }
     public static func ripemd160(_ data: Data) -> Data {
-        var result = [UInt8](repeating: 0, count: Int(RIPEMD160_DIGEST_LENGTH))
-        data.withUnsafeBytes { (ptr: UnsafePointer<UInt8>) in
-            RIPEMD160(ptr, data.count, &result)
-            return
-        }
-        return Data(result)
+        return Data(RIPEMD160().calculate(for: [UInt8](data)))
     }
     
     static func sha256ripemd160(_ data: Data) -> Data {
@@ -42,74 +27,70 @@ public class _Hash {
     }
     
     public static func hmacsha512(_ data: Data, key: Data) -> Data {
-        var result = [UInt8](repeating: 0, count: Int(SHA512_DIGEST_LENGTH))
-        var length: UInt32 = UInt32(SHA512_DIGEST_LENGTH)
-        data.withUnsafeBytes { (dataPtr: UnsafePointer<UInt8>) in
-            key.withUnsafeBytes { (keyPtr: UnsafePointer<UInt8>) in
-                HMAC(EVP_sha512(), keyPtr, Int32(key.count), dataPtr, data.count, &result, &length)
-                return
-            }
-        }
-        return Data(result)
+        return hmacSha512(data, key: key)
+    }
+
+    static func hmacSha512(_ data: Data, key: Data) -> Data {
+        let key = SymmetricKey(data: key)
+        return Data(HMAC<SHA512>.authenticationCode(for: data, using: key))
     }
 }
 
 public class _Key {
     public static func computePublicKey(fromPrivateKey privateKey: Data, compression: Bool) -> Data {
-        
-        let ctx = BN_CTX_new()
-        defer {
-            BN_CTX_free(ctx)
+        guard let ctx = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_SIGN)) else {
+            return Data()
         }
-        let key = EC_KEY_new_by_curve_name(NID_secp256k1)
-        defer {
-            EC_KEY_free(key)
+        defer { secp256k1_context_destroy(ctx) }
+
+        var pubkey = secp256k1_pubkey()
+        let created = privateKey.withUnsafeBytes {
+            secp256k1_ec_pubkey_create(ctx, &pubkey, $0)
         }
-        let group = EC_KEY_get0_group(key)
-        
-        
-        let prv = BN_new()
-        defer {
-            BN_free(prv)
+        guard created == 1 else {
+            return Data()
         }
-        privateKey.withUnsafeBytes { (ptr: UnsafePointer<UInt8>) in
-            BN_bin2bn(ptr, Int32(privateKey.count), prv)
-            return
+
+        let outputLength = compression ? 33 : 65
+        var output = Data(count: outputLength)
+        var serializedLength = outputLength
+        let flags = compression ? UInt32(SECP256K1_EC_COMPRESSED) : UInt32(SECP256K1_EC_UNCOMPRESSED)
+        let serialized = output.withUnsafeMutableBytes {
+            secp256k1_ec_pubkey_serialize(ctx, $0, &serializedLength, &pubkey, flags)
         }
-        
-        let pub = EC_POINT_new(group)
-        defer {
-            EC_POINT_free(pub)
+        guard serialized == 1 else {
+            return Data()
         }
-        EC_POINT_mul(group, pub, prv, nil, nil, ctx)
-        EC_KEY_set_private_key(key, prv)
-        EC_KEY_set_public_key(key, pub)
-        
-        if compression {
-            EC_KEY_set_conv_form(key, POINT_CONVERSION_COMPRESSED)
-            var ptr: UnsafeMutablePointer<UInt8>? = nil
-            let length = i2o_ECPublicKey(key, &ptr)
-            return Data(bytes: ptr!, count: Int(length))
-        } else {
-            var result = [UInt8](repeating: 0, count: 65)
-            let n = BN_new()
-            defer {
-                BN_free(n)
-            }
-            EC_POINT_point2bn(group, pub, POINT_CONVERSION_UNCOMPRESSED, n, ctx)
-            BN_bn2bin(n, &result)
-            return Data(result)
-        }
+
+        output.count = serializedLength
+        return output
     }
     public static func deriveKey(_ password: Data, salt: Data, iterations:Int, keyLength: Int) -> Data {
-        var result = [UInt8](repeating: 0, count: keyLength)
-        password.withUnsafeBytes { (passwordPtr: UnsafePointer<Int8>) in
-            salt.withUnsafeBytes { (saltPtr: UnsafePointer<UInt8>) in
-                PKCS5_PBKDF2_HMAC(passwordPtr, Int32(password.count), saltPtr, Int32(salt.count), Int32(iterations), EVP_sha512(), Int32(keyLength), &result)
-                return
+        let hmacLength = 64
+        let blockCount = Int(ceil(Double(keyLength) / Double(hmacLength)))
+        var derived = Data()
+
+        for blockIndex in 1...blockCount {
+            var blockSalt = salt
+            blockSalt.append(UInt8((blockIndex >> 24) & 0xff))
+            blockSalt.append(UInt8((blockIndex >> 16) & 0xff))
+            blockSalt.append(UInt8((blockIndex >> 8) & 0xff))
+            blockSalt.append(UInt8(blockIndex & 0xff))
+
+            var u = _Hash.hmacSha512(blockSalt, key: password)
+            var block = [UInt8](u)
+
+            for _ in 1..<iterations {
+                u = _Hash.hmacSha512(u, key: password)
+                for i in 0..<hmacLength {
+                    block[i] ^= u[i]
+                }
             }
+
+            derived.append(contentsOf: block)
         }
-        return Data(result)
+
+        return derived.prefix(keyLength)
     }
 }
 
@@ -130,11 +111,6 @@ public class _HDKey {
         self.childIndex = childIndex
     }
     public func derived(at index: UInt32, hardened: Bool) -> _HDKey? {
-        
-        let ctx = BN_CTX_new()
-        defer {
-            BN_CTX_free(ctx)
-        }
         var data = Data()
         if hardened {
             data.append(0) // padding
@@ -148,93 +124,65 @@ public class _HDKey {
         let digest = _Hash.hmacsha512(data, key: self.chainCode)
         let derivedPrivateKey = digest[0..<32]
         let derivedChainCode = digest[32..<(32+32)]
-        var curveOrder = BN_new()
-        defer {
-            BN_free(curveOrder)
-        }
-        BN_hex2bn(&curveOrder, "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141")
-        
-        let factor = BN_new()
-        defer {
-            BN_free(factor)
-        }
-        derivedPrivateKey.withUnsafeBytes { (ptr: UnsafePointer<UInt8>) in
-            BN_bin2bn(ptr, Int32(derivedPrivateKey.count), factor)
-            return
-        }
-        // Factor is too big, this derivation is invalid.
-        if BN_cmp(factor, curveOrder) >= 0 {
+
+        guard let ctx = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY)) else {
             return nil
         }
+        defer { secp256k1_context_destroy(ctx) }
         
         if let privateKey = self.privateKey {
-            let privateKeyNum = BN_new()!
-            defer {
-                BN_free(privateKeyNum)
+            var derived = privateKey
+            let tweaked = derived.withUnsafeMutableBytes { derivedPtr in
+                derivedPrivateKey.withUnsafeBytes { tweakPtr in
+                    secp256k1_ec_privkey_tweak_add(ctx, derivedPtr, tweakPtr)
+                }
             }
-            privateKey.withUnsafeBytes { (ptr: UnsafePointer<UInt8>) in
-                BN_bin2bn(ptr, Int32(privateKey.count), privateKeyNum)
-                return
-            }
-            BN_mod_add(privateKeyNum, privateKeyNum, factor, curveOrder, ctx)
-            
-            // Check for invalid derivation.
-            //if BN_is_zero(privateKeyNum) {
-            //    return nil
-            //}
-            if privateKeyNum.pointee.top == 0 { // BN_is_zero
+            guard tweaked == 1 else {
                 return nil
             }
-            let numBytes = ((BN_num_bits(privateKeyNum)+7)/8) // BN_num_bytes
-            var result = [UInt8](repeating: 0, count: Int(numBytes))
-            BN_bn2bin(privateKeyNum, &result)
+
             let fingerprintData = _Hash.sha256ripemd160(publicKey ?? Data())
             let fingerprintArray = fingerprintData.withUnsafeBytes {
                 [UInt32](UnsafeBufferPointer(start: $0, count: fingerprintData.count))
             }
-            let reusltData = Data(result)
-            return _HDKey(privateKey: reusltData,
-                               publicKey: reusltData,
+            return _HDKey(privateKey: derived,
+                               publicKey: _Key.computePublicKey(fromPrivateKey: derived, compression: true),
                                chainCode: derivedChainCode,
                                depth: depth + 1,
                                fingerprint: fingerprintArray[0],
                                childIndex: childIndex)
         } else if let publicKey = self.publicKey {
-            let publicKeyNum = BN_new()
-            defer {
-                BN_free(publicKeyNum)
+            var parsedKey = secp256k1_pubkey()
+            let parsed = publicKey.withUnsafeBytes {
+                secp256k1_ec_pubkey_parse(ctx, &parsedKey, $0, publicKey.count)
             }
-            
-            publicKey.withUnsafeBytes { (ptr: UnsafePointer<UInt8>) in
-                BN_bin2bn(ptr, Int32(publicKey.count), publicKeyNum)
-                return
-            }
-            let group = EC_GROUP_new_by_curve_name(NID_secp256k1)
-            let point = EC_POINT_new(group)
-            defer {
-                EC_POINT_free(point)
-            }
-            EC_POINT_bn2point(group, publicKeyNum, point, ctx)
-            EC_POINT_mul(group, point, factor, point, BN_value_one(), ctx)
-            
-            // Check for invalid derivation.
-            if EC_POINT_is_at_infinity(group, point) == 1 {
+            guard parsed == 1 else {
                 return nil
             }
-            let n = BN_new()
-            defer {
-                BN_free(n)
+
+            let tweaked = derivedPrivateKey.withUnsafeBytes {
+                secp256k1_ec_pubkey_tweak_add(ctx, &parsedKey, $0)
             }
-            var result = [UInt8](repeating: 0, count: 33)
-            EC_POINT_point2bn(group, point, POINT_CONVERSION_COMPRESSED, n, ctx)
-            BN_bn2bin(n, &result)
+            guard tweaked == 1 else {
+                return nil
+            }
+
+            var result = Data(count: 33)
+            var resultLength = 33
+            let serialized = result.withUnsafeMutableBytes {
+                secp256k1_ec_pubkey_serialize(ctx, $0, &resultLength, &parsedKey, UInt32(SECP256K1_EC_COMPRESSED))
+            }
+            guard serialized == 1 else {
+                return nil
+            }
+            result.count = resultLength
+
             let fingerprintData = _Hash.sha256ripemd160(publicKey)
             let fingerprintArray = fingerprintData.withUnsafeBytes {
                 [UInt32](UnsafeBufferPointer(start: $0, count: fingerprintData.count))
             }
-            let reusltData = Data(result)
-            return _HDKey(privateKey: reusltData,
-                          publicKey: reusltData,
+            return _HDKey(privateKey: nil,
+                          publicKey: result,
                           chainCode: derivedChainCode,
                           depth: depth + 1,
                           fingerprint: fingerprintArray[0],

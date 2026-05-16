@@ -137,8 +137,8 @@ public func <= (lhs: OpCodeProtocol, rhs: OpCodeProtocol) -> Bool {
 }
 
 // ...
-public func ... (lhs: OpCodeProtocol, rhs: OpCodeProtocol) -> Range<UInt8> {
-    return Range(lhs.value...rhs.value)
+public func ... (lhs: OpCodeProtocol, rhs: OpCodeProtocol) -> ClosedRange<UInt8> {
+    return lhs.value...rhs.value
 }
 
 // ~=
@@ -146,5 +146,8 @@ public func ~= (pattern: OpCodeProtocol, op: OpCodeProtocol) -> Bool {
     return pattern == op
 }
 public func ~= (pattern: Range<UInt8>, op: OpCodeProtocol) -> Bool {
+    return pattern ~= op.value
+}
+public func ~= (pattern: ClosedRange<UInt8>, op: OpCodeProtocol) -> Bool {
     return pattern ~= op.value
 }
