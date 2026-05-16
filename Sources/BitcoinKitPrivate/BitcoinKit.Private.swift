@@ -8,7 +8,7 @@
 
 import Foundation
 import CryptoKit
-import secp256k1
+import libsecp256k1
 
 public class _Hash {
     public static func sha1(_ data: Data) -> Data {
@@ -134,7 +134,7 @@ public class _HDKey {
             var derived = privateKey
             let tweaked = derived.withUnsafeMutableBytes { derivedPtr in
                 derivedPrivateKey.withUnsafeBytes { tweakPtr in
-                    secp256k1_ec_privkey_tweak_add(ctx, derivedPtr, tweakPtr)
+                    secp256k1_ec_seckey_tweak_add(ctx, derivedPtr, tweakPtr)
                 }
             }
             guard tweaked == 1 else {

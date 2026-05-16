@@ -11,7 +11,7 @@ let package = Package(
         .library(name: "BitcoinKit", targets: ["BitcoinKit"])
     ],
     dependencies: [
-        .package(url: "https://github.com/GigaBitcoin/secp256k1.swift.git", exact: "0.10.0")
+        .package(url: "https://github.com/GigaBitcoin/secp256k1.swift.git", exact: "0.23.1")
     ],
     targets: [
         .target(
@@ -21,7 +21,7 @@ let package = Package(
         .target(
             name: "BitcoinKitPrivate",
             dependencies: [
-                .product(name: "secp256k1", package: "secp256k1.swift")
+                .product(name: "libsecp256k1", package: "secp256k1.swift")
             ]
         ),
         .testTarget(
