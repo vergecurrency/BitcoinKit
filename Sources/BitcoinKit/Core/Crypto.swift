@@ -29,6 +29,67 @@ import BitcoinKit.Private
 #else
 import BitcoinKitPrivate
 #endif
+import Foundation
+import secp256k1
+
+enum _Crypto {
+    static func signMessage(_ message: Data, withPrivateKey privateKey: Data) throws -> Data {
+        // Create context
+        guard let context = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_SIGN)) else {
+            throw CryptoError.signFailed
+        }
+        defer { secp256k1_context_destroy(context) }
+
+        // Hash message before signing
+        let hash = Crypto.sha256(message)
+
+        var signature = secp256k1_ecdsa_signature()
+        let signResult = hash.withUnsafeBytes { hashPtr in
+            privateKey.withUnsafeBytes { privKeyPtr in
+                secp256k1_ecdsa_sign(context, &signature, hashPtr.bindMemory(to: UInt8.self).baseAddress!, privKeyPtr.bindMemory(to: UInt8.self).baseAddress!, nil, nil)
+            }
+        }
+
+        guard signResult == 1 else {
+            throw CryptoError.signFailed
+        }
+
+        // Serialize compact
+        var compactSig = Data(repeating: 0, count: 64)
+        var outputLen: size_t = 64
+        compactSig.withUnsafeMutableBytes { compactPtr in
+            secp256k1_ecdsa_signature_serialize_compact(context, compactPtr.bindMemory(to: UInt8.self).baseAddress!, &signature)
+        }
+        return compactSig
+    }
+
+    static func verifySignature(_ signature: Data, message: Data, publicKey: Data) throws -> Bool {
+        guard let context = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_VERIFY)) else {
+            throw CryptoError.signatureParseFailed
+        }
+        defer { secp256k1_context_destroy(context) }
+
+        let hash = Crypto.sha256(message)
+        var sig = secp256k1_ecdsa_signature()
+        var pubkey = secp256k1_pubkey()
+
+        let parseSig = signature.withUnsafeBytes {
+            secp256k1_ecdsa_signature_parse_compact(context, &sig, $0.bindMemory(to: UInt8.self).baseAddress!)
+        }
+        guard parseSig == 1 else { throw CryptoError.signatureParseFailed }
+
+        let parsePub = publicKey.withUnsafeBytes {
+            secp256k1_ec_pubkey_parse(context, &pubkey, $0.bindMemory(to: UInt8.self).baseAddress!, publicKey.count)
+        }
+        guard parsePub == 1 else { throw CryptoError.publicKeyParseFailed }
+
+        let verifyResult = hash.withUnsafeBytes {
+            secp256k1_ecdsa_verify(context, &sig, $0.bindMemory(to: UInt8.self).baseAddress!, &pubkey)
+        }
+
+        return verifyResult == 1
+    }
+}
 
 public struct Crypto {
     public static func sha1(_ data: Data) -> Data {
@@ -77,11 +138,17 @@ public struct Crypto {
             throw ScriptMachineError.error("SigData is empty.")
         }
         // Extract hash type from the last byte of the signature.
-        let hashType = SighashType(sigData.last!)
+        let helper: SignatureHashHelper
+        if let hashType = BCHSighashType(rawValue: sigData.last!) {
+            helper = BCHSignatureHashHelper(hashType: hashType)
+        } else if let hashType = BTCSighashType(rawValue: sigData.last!) {
+            helper = BTCSignatureHashHelper(hashType: hashType)
+        } else {
+            throw ScriptMachineError.error("Unknown sig hash type")
+        }
         // Strip that last byte to have a pure signature.
-        let signature = sigData.dropLast()
-
-        let sighash: Data = tx.signatureHash(for: utxo, inputIndex: inputIndex, hashType: hashType)
+        let sighash: Data = helper.createSignatureHash(of: tx, for: utxo, inputIndex: inputIndex)
+        let signature: Data = sigData.dropLast()
 
         return try Crypto.verifySignature(signature, message: sighash, publicKey: pubKeyData)
     }

@@ -31,8 +31,6 @@ public struct Transaction {
     public let version: UInt32
     /// If present, always 0001, and indicates the presence of witness data
     // public let flag: UInt16 // If present, always 0001, and indicates the presence of witness data
-    /// Transaction timestamp
-    public let timestamp: UInt32?
     /// Number of Transaction inputs (never zero)
     public var txInCount: VarInt {
         return VarInt(inputs.count)
@@ -58,9 +56,8 @@ public struct Transaction {
         return Data(txHash.reversed()).hex
     }
 
-    public init(version: UInt32, timestamp: UInt32?, inputs: [TransactionInput], outputs: [TransactionOutput], lockTime: UInt32) {
+    public init(version: UInt32, inputs: [TransactionInput], outputs: [TransactionOutput], lockTime: UInt32) {
         self.version = version
-        self.timestamp = timestamp
         self.inputs = inputs
         self.outputs = outputs
         self.lockTime = lockTime
@@ -69,9 +66,6 @@ public struct Transaction {
     public func serialized() -> Data {
         var data = Data()
         data += version
-        if let timestamp = timestamp {
-            data += timestamp
-        }
         data += txInCount.serialized()
         data += inputs.flatMap { $0.serialized() }
         data += txOutCount.serialized()
@@ -89,9 +83,8 @@ public struct Transaction {
         return deserialize(byteStream)
     }
 
-    static func deserialize(_ byteStream: ByteStream, withTimestamp: Bool = false) -> Transaction {
+    static func deserialize(_ byteStream: ByteStream) -> Transaction {
         let version = byteStream.read(UInt32.self)
-        let timestamp = withTimestamp ? byteStream.read(UInt32.self) : nil
         let txInCount = byteStream.read(VarInt.self)
         var inputs = [TransactionInput]()
         for _ in 0..<Int(txInCount.underlyingValue) {
@@ -103,6 +96,6 @@ public struct Transaction {
             outputs.append(TransactionOutput.deserialize(byteStream))
         }
         let lockTime = byteStream.read(UInt32.self)
-        return Transaction(version: version, timestamp: timestamp, inputs: inputs, outputs: outputs, lockTime: lockTime)
+        return Transaction(version: version, inputs: inputs, outputs: outputs, lockTime: lockTime)
     }
 }

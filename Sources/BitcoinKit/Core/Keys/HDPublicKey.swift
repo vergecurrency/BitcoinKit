@@ -39,7 +39,7 @@ public class HDPublicKey {
     public let raw: Data
     public let chainCode: Data
 
-    init(raw: Data, chainCode: Data, network: Network = .testnet, depth: UInt8, fingerprint: UInt32, childIndex: UInt32) {
+    init(raw: Data, chainCode: Data, network: Network = .testnetBCH, depth: UInt8, fingerprint: UInt32, childIndex: UInt32) {
         self.network = network
         self.raw = raw
         self.chainCode = chainCode
@@ -56,8 +56,7 @@ public class HDPublicKey {
         data += childIndex.littleEndian
         data += chainCode
         data += raw
-        let checksum = Crypto.sha256sha256(data).prefix(4)
-        return Base58.encode(data + checksum)
+        return Base58Check.encode(data)
     }
 
     public func publicKey() -> PublicKey {
@@ -72,7 +71,7 @@ public class HDPublicKey {
         guard let derivedKey = _HDKey(privateKey: nil, publicKey: raw, chainCode: chainCode, depth: depth, fingerprint: fingerprint, childIndex: childIndex).derived(at: index, hardened: false) else {
             throw DerivationError.derivationFailed
         }
-        return HDPublicKey(raw: derivedKey.publicKey!, chainCode: derivedKey.chainCode, network: network, depth: derivedKey.depth, fingerprint: derivedKey.fingerprint, childIndex: derivedKey.childIndex)
+        return HDPublicKey(raw: derivedKey.publicKey, chainCode: derivedKey.chainCode, network: network, depth: derivedKey.depth, fingerprint: derivedKey.fingerprint, childIndex: derivedKey.childIndex)
     }
 }
 

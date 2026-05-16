@@ -37,8 +37,7 @@ public struct PrivateKey {
     public let network: Network
     public let isPublicKeyCompressed: Bool
 
-    // QUESTION: これランダムに生成する場合かな？
-    public init(network: Network = .testnet, isPublicKeyCompressed: Bool = true) {
+    public init(network: Network = .testnetBCH, isPublicKeyCompressed: Bool = true) {
         self.network = network
         self.isPublicKeyCompressed = isPublicKeyCompressed
 
@@ -73,56 +72,56 @@ public struct PrivateKey {
         var key = Data(count: count)
         var status: Int32 = 0
         repeat {
-            status = key.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, count, $0) }
+            status = key.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, count, $0.baseAddress.unsafelyUnwrapped) }
         } while (status != 0 || !check([UInt8](key)))
 
         self.data = key
     }
 
     public init(wif: String) throws {
-        guard let decoded = Base58.decode(wif) else {
-            throw PrivateKeyError.invalidFormat
-        }
-        let checksumDropped = decoded.prefix(decoded.count - 4)
-        guard checksumDropped.count == (1 + 32) || checksumDropped.count == (1 + 32 + 1) else {
+        guard var payload = Base58Check.decode(wif),
+            (payload.count == (1 + 32) || payload.count == (1 + 32 + 1)) else {
             throw PrivateKeyError.invalidFormat
         }
 
-        let addressPrefix = checksumDropped[0]
+        let addressPrefix = payload.popFirst()!
         switch addressPrefix {
-        case Network.mainnet.privatekey:
-            network = .mainnet
-        case Network.testnet.privatekey:
-            network = .testnet
-        case Network.mainnetXVG.privatekey:
-            network = .mainnetXVG
+        case Network.mainnetBCH.privatekey:
+            network = .mainnetBCH
+        case Network.testnetBCH.privatekey:
+            network = .testnetBCH
         default:
             throw PrivateKeyError.invalidFormat
         }
 
-        let h = Crypto.sha256sha256(checksumDropped)
-        let calculatedChecksum = h.prefix(4)
-        let originalChecksum = decoded.suffix(4)
-        guard calculatedChecksum == originalChecksum else {
-            throw PrivateKeyError.invalidFormat
-        }
-
-        // The life is not always easy. Somehow some people added one extra byte to a private key in Base58 to
+        // The life is not always easy. Somehow some people added one extra byte to a private key in Base58 to
         // let us know that the resulting public key must be compressed.
-        self.isPublicKeyCompressed = (checksumDropped.count == (1 + 32 + 1))
+        self.isPublicKeyCompressed = (payload.count == (32 + 1))
 
         // Private key itself is always 32 bytes.
-        data = checksumDropped.dropFirst().prefix(32)
+        data = payload.prefix(32)
     }
 
-    public init(data: Data, network: Network = .testnet, isPublicKeyCompressed: Bool = true) {
+    public init(data: Data, network: Network = .testnetBCH, isPublicKeyCompressed: Bool = true) {
         self.data = data
         self.network = network
         self.isPublicKeyCompressed = isPublicKeyCompressed
     }
 
     private func computePublicKeyData() -> Data {
-        return _Key.computePublicKey(fromPrivateKey: data, compression: isPublicKeyCompressed)
+        return _SwiftKey.computePublicKey(fromPrivateKey: data, compression: isPublicKeyCompressed)!
+    }
+
+    public func publicKeyPoint() throws -> PointOnCurve {
+        let xAndY: Data = _SwiftKey.computePublicKey(fromPrivateKey: data, compression: false)!
+        let expectedLengthOfScalar = Scalar32Bytes.expectedByteCount
+        let expectedLengthOfKey = expectedLengthOfScalar * 2
+        guard xAndY.count == expectedLengthOfKey else {
+            fatalError("expected length of key is \(expectedLengthOfKey) bytes, but got: \(xAndY.count)")
+        }
+        let x = xAndY.prefix(expectedLengthOfScalar)
+        let y = xAndY.suffix(expectedLengthOfScalar)
+        return try PointOnCurve(x: x, y: y)
     }
 
     public func publicKey() -> PublicKey {
@@ -135,12 +134,22 @@ public struct PrivateKey {
             // Add extra byte 0x01 in the end.
             payload += Int8(1)
         }
-        let checksum = Crypto.sha256sha256(payload).prefix(4)
-        return Base58.encode(payload + checksum)
+        return Base58Check.encode(payload)
     }
 
+    public func sign(_ data: Data) -> Data {
+        return try! Crypto.sign(data, privateKey: self)
+    }
+
+    @available(*, unavailable, message: "Use SignatureHashHelper and sign(_ data: Data) method instead")
     public func sign(_ tx: Transaction, utxoToSign: UnspentTransaction, hashType: SighashType, inputIndex: Int = 0) -> Data {
-        let sighash: Data = tx.signatureHash(for: utxoToSign.output, inputIndex: inputIndex, hashType: hashType)
+        let helper: SignatureHashHelper
+        if hashType.hasForkId {
+            helper = BCHSignatureHashHelper(hashType: BCHSighashType(rawValue: hashType.uint8)!)
+        } else {
+            helper = BTCSignatureHashHelper(hashType: BTCSighashType(rawValue: hashType.uint8)!)
+        }
+        let sighash = helper.createSignatureHash(of: tx, for: utxoToSign.output, inputIndex: inputIndex)
         return try! Crypto.sign(sighash, privateKey: self)
     }
 }

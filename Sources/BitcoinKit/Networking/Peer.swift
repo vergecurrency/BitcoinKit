@@ -66,11 +66,11 @@ public class Peer: NSObject, StreamDelegate {
     private var inputStream: InputStream!
     private var outputStream: OutputStream!
 
-    public convenience init(network: Network = .testnet) {
+    public convenience init(network: Network = .testnetBCH) {
         self.init(host: network.dnsSeeds[Int(arc4random_uniform(UInt32(network.dnsSeeds.count)))], network: network)
     }
 
-    public init(host: String, network: Network = .testnet) {
+    public init(host: String, network: Network = .testnetBCH) {
         self.host = host
         self.network = network
         latestBlockHash = network.genesisBlock
@@ -106,6 +106,7 @@ public class Peer: NSObject, StreamDelegate {
         outputStream.delegate = nil
         inputStream.remove(from: .current, forMode: .common)
         outputStream.remove(from: .current, forMode: .common)
+
         inputStream.close()
         outputStream.close()
         readStream = nil
@@ -244,7 +245,9 @@ public class Peer: NSObject, StreamDelegate {
     private func sendMessage(_ message: Message) {
         log("sending \(message.command)")
         let data = message.serialized()
-        _ = data.withUnsafeBytes { outputStream.write($0, maxLength: data.count) }
+        data.withUnsafeBytes { (ptr: UnsafeRawBufferPointer) -> Void in
+            outputStream.write(ptr.bindMemory(to: UInt8.self).baseAddress.unsafelyUnwrapped, maxLength: data.count)
+        }
     }
 
     private func sendVersionMessage() {

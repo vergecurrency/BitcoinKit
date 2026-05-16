@@ -73,8 +73,7 @@ public class HDPrivateKey {
         data += chainCode
         data += UInt8(0)
         data += raw
-        let checksum = Crypto.sha256sha256(data).prefix(4)
-        return Base58.encode(data + checksum)
+        return Base58Check.encode(data)
     }
 
     public func privateKey() -> PrivateKey {
@@ -86,40 +85,37 @@ public class HDPrivateKey {
     }
 
     private func computePublicKeyData() -> Data {
-        return _Key.computePublicKey(fromPrivateKey: raw, compression: true)
+        return _SwiftKey.computePublicKey(fromPrivateKey: raw, compression: true)!
     }
 
     public func derived(at index: UInt32, hardened: Bool = false) throws -> HDPrivateKey {
-        // As we use explicit parameter "hardened", do not allow higher bit set.
-        if (0x80000000 & index) != 0 {
-            fatalError("invalid child index")
-        }
-
-        guard let derivedKey = _HDKey(privateKey: raw, publicKey: extendedPublicKey().raw, chainCode: chainCode, depth: depth, fingerprint: fingerprint, childIndex: childIndex).derived(at: index, hardened: hardened) else {
-            throw DerivationError.derivationFailed
-        }
-        return HDPrivateKey(privateKey: ensure32Bytes(data: derivedKey.privateKey!), chainCode: derivedKey.chainCode, network: network, depth: derivedKey.depth, fingerprint: derivedKey.fingerprint, childIndex: derivedKey.childIndex)
+    // If hardened, ensure index is within normal range (not already hardened)
+    if hardened && index >= 0x80000000 {
+        throw DerivationError.derivationFailed
     }
 
-    private func ensure32Bytes(data: Data) -> Data {
-        let length = data.count
+    let actualIndex = hardened ? (index | 0x80000000) : index
 
-        if length >= 32 {
-            return data
-        }
-
-        var dataFixed = Data()
-        var int0 = UInt8(0)
-        let data_0: Data = Data(buffer: UnsafeBufferPointer(start: &int0, count: 1))
-
-        for _ in 0..<32 - length {
-            dataFixed.append(data_0)
-        }
-
-        dataFixed.append(data)
-
-        return dataFixed
+    guard let derivedKey = _HDKey(
+        privateKey: raw,
+        publicKey: extendedPublicKey().raw,
+        chainCode: chainCode,
+        depth: depth,
+        fingerprint: fingerprint,
+        childIndex: childIndex
+    ).derived(at: actualIndex, hardened: hardened) else {
+        throw DerivationError.derivationFailed
     }
+
+    return HDPrivateKey(
+        privateKey: derivedKey.privateKey!,
+        chainCode: derivedKey.chainCode,
+        network: network,
+        depth: derivedKey.depth,
+        fingerprint: derivedKey.fingerprint,
+        childIndex: derivedKey.childIndex
+    )
+}
 }
 
 extension HDPrivateKey: CustomStringConvertible {
